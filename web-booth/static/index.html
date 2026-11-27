@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Photobooth Dies Natalis</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f1f5f9;
+            color: #0f172a;
+            height: 100vh;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+            overflow: hidden;
+        }
+        /* 70% Panel Pratinjau Kiri */
+        .preview-pane {
+            flex: 7;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            border: 1px solid #e2e8f0;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .feed-wrapper {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #live-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        #final-strip {
+            display: none;
+            max-height: 92%;
+            max-width: 92%;
+            border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.15);
+        }
+        #countdown-overlay {
+            display: none;
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            background: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(8px);
+            padding: 16px 32px;
+            border-radius: 20px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        #timer {
+            font-size: 5.5rem;
+            font-weight: 800;
+            line-height: 1;
+            color: #2563eb;
+        }
+        #flash {
+            position: fixed;
+            inset: 0;
+            background: #ffffff;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+            z-index: 50;
+        }
+
+        /* 30% Panel Kontrol Kanan */
+        .control-pane {
+            flex: 3;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            border: 1px solid #e2e8f0;
+            padding: 28px 22px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            text-align: center;
+        }
+        .header h1 { font-size: 1.8rem; font-weight: 800; color: #0f172a; }
+        .header p { font-size: 0.95rem; color: #64748b; margin-top: 4px; }
+
+        .panel-state {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+            margin: 12px 0;
+        }
+        .panel-state.active { display: flex; }
+
+        .camera-select-box {
+            width: 100%;
+            text-align: left;
+            background: #f8fafc;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+        }
+        .camera-select-box label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #64748b;
+            margin-bottom: 6px;
+        }
+        .camera-row {
+            display: flex;
+            gap: 8px;
+        }
+        select#camera-select {
+            flex: 1;
+            padding: 9px 12px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #0f172a;
+            font-size: 0.92rem;
+            font-weight: 600;
+            outline: none;
+        }
+        button.refresh-btn {
+            padding: 9px 13px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #334155;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        button.refresh-btn:hover { background: #f1f5f9; }
+
+        .tos-box {
+            width: 100%;
+            text-align: left;
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 16px 18px;
+            font-size: 0.98rem;
+            color: #334155;
+            line-height: 1.5;
+        }
+        .tos-box h3 {
+            font-size: 0.9rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #0f172a;
+            margin-bottom: 8px;
+        }
+        .tos-box ul {
+            padding-left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        button.primary-btn {
+            width: 100%;
+            padding: 20px 24px;
+            font-size: 1.35rem;
+            font-weight: 700;
+            border: none;
+            border-radius: 16px;
+            background: #2563eb;
+            color: #ffffff;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+            transition: transform 0.1s, background 0.15s;
+        }
+        button.primary-btn:hover { background: #1d4ed8; }
+        button.primary-btn:active { transform: scale(0.98); }
+
+        .thumbs {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+            align-items: center;
+            justify-content: center;
+        }
+        .thumb-slot {
+            flex: 1;
+            min-height: 0;
+            max-width: 100%;
+            aspect-ratio: 4 / 3;
+            background: #f8fafc;
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-weight: 600;
+            overflow: hidden;
+        }
+        .thumb-slot img { width: 100%; height: 100%; object-fit: cover; }
+
+        #qr-img {
+            width: 220px;
+            height: 220px;
+            padding: 10px;
+            background: #ffffff;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+        }
+        .badge {
+            background: #eff6ff;
+            color: #1d4ed8;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 1.05rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="flash"></div>
+
+    <!-- 70% Kiri: Pratinjau Kamera Langsung / Hasil Bingkai -->
+    <div class="preview-pane">
+        <div class="feed-wrapper" id="feed-wrapper">
+            <img id="live-feed" src="/video_feed" alt="Pratinjau Kamera">
+        </div>
+        <img id="final-strip" src="" alt="Hasil Photobooth">
+        <div id="countdown-overlay">
+            <div id="shot-label" style="font-size: 1.1rem; font-weight: 700; color: #475569;">Foto 1 dari 3</div>
+            <div id="timer">6</div>
+        </div>
+    </div>
+
+    <!-- 30% Kanan: Kontrol, Progres & Kode QR -->
+    <div class="control-pane">
+        <div class="header">
+            <h1>Dies Natalis</h1>
+            <p>Sesi Photobooth</p>
+        </div>
+
+        <!-- Tahap 1: Siap + Pilih Kamera + Ketentuan Penggunaan -->
+        <div id="panel-idle" class="panel-state active">
+            <div class="camera-select-box">
+                <label for="camera-select">Sumber Kamera</label>
+                <div class="camera-row">
+                    <select id="camera-select" onchange="changeCamera(this.value)">
+                        <option value="0">Memindai kamera...</option>
+                    </select>
+                    <button class="refresh-btn" onclick="loadCameras()" title="Muat Ulang Kamera">&#x21bb;</button>
+                </div>
+            </div>
+
+            <div class="tos-box">
+                <h3>Ketentuan Penggunaan</h3>
+                <ul>
+                    <li>Sesi terdiri dari <b>3 kali foto</b> (jeda 6 detik foto pertama, 4 detik berikutnya).</li>
+                    <li>Foto disimpan secara lokal untuk dokumentasi acara &amp; diunduh via QR (30 detik).</li>
+                    <li>Dengan menekan tombol mulai, Anda menyetujui ketentuan di atas.</li>
+                </ul>
+            </div>
+
+            <button class="primary-btn" onclick="startSession()">MULAI SESI</button>
+        </div>
+
+        <!-- Tahap 2: Pengambilan & Pemrosesan Foto -->
+        <div id="panel-active" class="panel-state">
+            <div id="status-text" class="badge">Bersiap!</div>
+            <div class="thumbs">
+                <div class="thumb-slot" id="thumb-1">Foto 1</div>
+                <div class="thumb-slot" id="thumb-2">Foto 2</div>
+                <div class="thumb-slot" id="thumb-3">Foto 3</div>
+            </div>
+        </div>
+
+        <!-- Tahap 3: Tampilan QR 30 Detik -->
+        <div id="panel-showcase" class="panel-state">
+            <h2 style="font-size: 1.4rem;">Pindai untuk Mengunduh</h2>
+            <img id="qr-img" src="" alt="Kode QR">
+            <p id="share-url" style="font-size: 0.8rem; color: #64748b; font-family: monospace; word-break: break-all;"></p>
+            <div id="qr-timer" class="badge">Menutup dalam 30d</div>
+        </div>
+
+        <div style="font-size: 0.88rem; color: #94a3b8;">Hubungkan ke Wi-Fi Photobooth terlebih dahulu</div>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws://${location.host}/ws`);
+        const flashEl = document.getElementById("flash");
+        const feedWrapper = document.getElementById("feed-wrapper");
+        const liveFeed = document.getElementById("live-feed");
+        const finalStrip = document.getElementById("final-strip");
+        const countdownOverlay = document.getElementById("countdown-overlay");
+
+        async function loadCameras() {
+            const select = document.getElementById("camera-select");
+            try {
+                const res = await fetch("/cameras");
+                const data = await res.json();
+                select.innerHTML = "";
+                if (data.cameras.length === 0) {
+                    select.innerHTML = `<option value="0">Kamera tidak ditemukan</option>`;
+                    return;
+                }
+                data.cameras.forEach(cam => {
+                    const opt = document.createElement("option");
+                    opt.value = cam.index;
+                    opt.textContent = cam.label;
+                    if (cam.index === data.current) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                select.innerHTML = `<option value="0">Kamera 0 (Bawaan)</option>`;
+            }
+        }
+
+        async function changeCamera(idx) {
+            await fetch("/camera/select", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ index: parseInt(idx, 10) })
+            });
+            liveFeed.src = `/video_feed?t=${Date.now()}`;
+        }
+
+        function setPanel(id) {
+            document.querySelectorAll(".panel-state").forEach(el => el.classList.remove("active"));
+            document.getElementById(id).classList.add("active");
+        }
+
+        function resetThumbs() {
+            for (let i = 1; i <= 3; i++) {
+                document.getElementById(`thumb-${i}`).innerHTML = `Foto ${i}`;
+            }
+        }
+
+        function startSession() {
+            resetThumbs();
+            ws.send(JSON.stringify({ action: "start" }));
+        }
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.state === "countdown") {
+                setPanel("panel-active");
+                feedWrapper.style.display = "flex";
+                finalStrip.style.display = "none";
+                countdownOverlay.style.display = "block";
+                document.getElementById("status-text").textContent = `Gaya untuk Foto ${data.shot}/3`;
+                document.getElementById("shot-label").textContent = `Foto ${data.shot} dari 3`;
+                document.getElementById("timer").textContent = data.seconds;
+            } else if (data.state === "flash") {
+                flashEl.style.opacity = "1";
+                setTimeout(() => flashEl.style.opacity = "0", 180);
+                if (data.thumb) {
+                    document.getElementById(`thumb-${data.shot}`).innerHTML = `<img src="${data.thumb}">`;
+                }
+            } else if (data.state === "processing") {
+                countdownOverlay.style.display = "none";
+                document.getElementById("status-text").textContent = "Menyusun Bingkai...";
+            } else if (data.state === "showcase") {
+                setPanel("panel-showcase");
+                feedWrapper.style.display = "none";
+                finalStrip.style.display = "block";
+                finalStrip.src = data.preview;
+                document.getElementById("qr-img").src = `data:image/png;base64,${data.qr}`;
+                document.getElementById("share-url").textContent = data.url;
+                document.getElementById("qr-timer").textContent = `Menutup dalam ${data.seconds}d`;
+            } else if (data.state === "idle") {
+                setPanel("panel-idle");
+                finalStrip.style.display = "none";
+                feedWrapper.style.display = "flex";
+                countdownOverlay.style.display = "none";
+            }
+        };
+
+        loadCameras();
+    </script>
+</body>
+</html>
