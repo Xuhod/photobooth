@@ -1,0 +1,2 @@
+#!/bin/sh
+exec python -B .githooks/privacy_guard.py staged

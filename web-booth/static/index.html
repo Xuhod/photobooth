@@ -244,7 +244,7 @@
     <!-- 70% Kiri: Pratinjau Kamera Langsung / Hasil Bingkai -->
     <div class="preview-pane">
         <div class="feed-wrapper" id="feed-wrapper">
-            <img id="live-feed" src="/video_feed" alt="Pratinjau Kamera">
+            <img id="live-feed" alt="Pratinjau Kamera">
         </div>
         <img id="final-strip" src="" alt="Hasil Photobooth">
         <div id="countdown-overlay">
@@ -266,17 +266,18 @@
                 <label for="camera-select">Sumber Kamera</label>
                 <div class="camera-row">
                     <select id="camera-select" onchange="changeCamera(this.value)">
-                        <option value="0">Memindai kamera...</option>
+                        <option value="">Memindai kamera...</option>
                     </select>
                     <button class="refresh-btn" onclick="loadCameras()" title="Muat Ulang Kamera">&#x21bb;</button>
                 </div>
+                <small id="sony-hint" role="status" hidden></small>
             </div>
 
             <div class="tos-box">
                 <h3>Ketentuan Penggunaan</h3>
                 <ul>
                     <li>Sesi terdiri dari <b>3 kali foto</b> (jeda 6 detik foto pertama, 4 detik berikutnya).</li>
-                    <li>Foto disimpan secara lokal untuk dokumentasi acara &amp; diunduh via QR (30 detik).</li>
+                    <li>Foto tersimpan di PC booth. Pindai QR untuk mengunduh hasil bingkai melalui jaringan booth.</li>
                     <li>Dengan menekan tombol mulai, Anda menyetujui ketentuan di atas.</li>
                 </ul>
             </div>
@@ -302,27 +303,59 @@
             <div id="qr-timer" class="badge">Menutup dalam 30d</div>
         </div>
 
-        <div style="font-size: 0.88rem; color: #94a3b8;">Hubungkan ke Wi-Fi Photobooth terlebih dahulu</div>
+        <div style="font-size: 0.88rem; color: #94a3b8;">Untuk mengunduh lewat HP, gunakan jaringan Wi-Fi booth.</div>
     </div>
 
     <script>
-        const ws = new WebSocket(`ws://${location.host}/ws`);
+        const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
         const flashEl = document.getElementById("flash");
         const feedWrapper = document.getElementById("feed-wrapper");
         const liveFeed = document.getElementById("live-feed");
         const finalStrip = document.getElementById("final-strip");
         const countdownOverlay = document.getElementById("countdown-overlay");
+        const qrImage = document.getElementById("qr-img");
+        const cameraSelect = document.getElementById("camera-select");
+        const sonyHint = document.getElementById("sony-hint");
+        const sonyHelp = "Pratinjau USB Sony belum tersedia. Gunakan tombol muat ulang untuk mencoba lagi.";
+        async function showSonyStatus() {
+            if (cameraSelect.value !== "sony") return;
+            const source = liveFeed.src;
+            sonyHint.textContent = sonyHelp;
+            try {
+                const response = await fetch("/sony_status", { cache: "no-store" });
+                if (!response.ok) return;
+                const { preview } = await response.json();
+                if (cameraSelect.value !== "sony" || liveFeed.src !== source) return;
+                const messages = {
+                    usb_error: "Windows gagal mengendalikan Sony melalui USB. Sesi Sony belum tersedia.",
+                    timeout: "Sony tidak merespons perintah USB tepat waktu. Sesi Sony belum tersedia.",
+                    no_frame: "Sony tidak mengirim gambar Live View. Sesi Sony belum tersedia.",
+                    connecting: "Sony sedang dihubungkan melalui USB…",
+                };
+                sonyHint.textContent = messages[preview] || sonyHelp;
+            } catch (_) { /* Leave the generic message visible. */ }
+        }
+        liveFeed.addEventListener("error", showSonyStatus);
+        liveFeed.addEventListener("load", () => {
+            if (cameraSelect.value === "sony") sonyHint.textContent = "Sony α7 II · USB";
+        });
+
+        function useSonyPreview() {
+            sonyHint.textContent = "Menghubungkan Sony melalui USB…";
+            sonyHint.hidden = false;
+            liveFeed.style.transform = "none";
+            liveFeed.style.objectFit = "contain";
+            liveFeed.src = `/sony_preview?t=${Date.now()}`;
+        }
 
         async function loadCameras() {
-            const select = document.getElementById("camera-select");
+            const select = cameraSelect;
+            const previous = select.value;
             try {
                 const res = await fetch("/cameras");
+                if (!res.ok) throw new Error("Camera list unavailable");
                 const data = await res.json();
                 select.innerHTML = "";
-                if (data.cameras.length === 0) {
-                    select.innerHTML = `<option value="0">Kamera tidak ditemukan</option>`;
-                    return;
-                }
                 data.cameras.forEach(cam => {
                     const opt = document.createElement("option");
                     opt.value = cam.index;
@@ -330,17 +363,50 @@
                     if (cam.index === data.current) opt.selected = true;
                     select.appendChild(opt);
                 });
+                if (!data.cameras.length) {
+                    const unavailable = new Option("Kamera video tidak ditemukan", "", true, true);
+                    unavailable.disabled = true;
+                    select.add(unavailable);
+                }
+                if (data.sony_usb) {
+                    select.add(new Option("Sony α7 II (USB)", "sony"));
+                    if (previous === "sony" || (!previous && data.sony_connected)) select.value = "sony";
+                }
             } catch (err) {
-                select.innerHTML = `<option value="0">Kamera 0 (Bawaan)</option>`;
+                if (!select.value && select.options.length === 1) {
+                    select.replaceChildren(new Option("Daftar kamera tidak tersedia", ""));
+                }
             }
+            sonyHint.hidden = select.value !== "sony";
+            if (select.value === "sony") useSonyPreview();
+            else if (select.value && !liveFeed.getAttribute("src")) liveFeed.src = "/video_feed";
         }
 
         async function changeCamera(idx) {
-            await fetch("/camera/select", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ index: parseInt(idx, 10) })
-            });
+            const select = cameraSelect;
+            sonyHint.hidden = idx !== "sony";
+            if (idx === "sony") {
+                useSonyPreview();
+                return;
+            }
+            if (idx === "") return;
+            select.disabled = true;
+            try {
+                const res = await fetch("/camera/select", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ index: parseInt(idx, 10) })
+                });
+                if (!res.ok) throw new Error("Camera could not be opened");
+            } catch (err) {
+                await loadCameras();
+                alert("Kamera tidak dapat dibuka. Periksa koneksi atau tutup aplikasi lain yang memakai kamera.");
+                if (select.value === "sony") return;
+            } finally {
+                select.disabled = false;
+            }
+            liveFeed.style.transform = "";
+            liveFeed.style.objectFit = "";
             liveFeed.src = `/video_feed?t=${Date.now()}`;
         }
 
@@ -356,8 +422,16 @@
         }
 
         function startSession() {
+            if (ws.readyState !== WebSocket.OPEN || cameraSelect.disabled || !cameraSelect.value) return;
             resetThumbs();
-            ws.send(JSON.stringify({ action: "start" }));
+            ws.send(JSON.stringify({ action: "start", source: cameraSelect.value === "sony" ? "sony" : "video" }));
+        }
+
+        function resetBoothView() {
+            setPanel("panel-idle");
+            finalStrip.style.display = "none";
+            feedWrapper.style.display = "flex";
+            countdownOverlay.style.display = "none";
         }
 
         ws.onmessage = (event) => {
@@ -371,6 +445,9 @@
                 document.getElementById("status-text").textContent = `Gaya untuk Foto ${data.shot}/3`;
                 document.getElementById("shot-label").textContent = `Foto ${data.shot} dari 3`;
                 document.getElementById("timer").textContent = data.seconds;
+            } else if (data.state === "sony_transfer") {
+                countdownOverlay.style.display = "none";
+                document.getElementById("status-text").textContent = "Menerima foto dari Sony melalui USB…";
             } else if (data.state === "flash") {
                 flashEl.style.opacity = "1";
                 setTimeout(() => flashEl.style.opacity = "0", 180);
@@ -378,21 +455,26 @@
                     document.getElementById(`thumb-${data.shot}`).innerHTML = `<img src="${data.thumb}">`;
                 }
             } else if (data.state === "processing") {
-                countdownOverlay.style.display = "none";
+                 countdownOverlay.style.display = "none";
                 document.getElementById("status-text").textContent = "Menyusun Bingkai...";
             } else if (data.state === "showcase") {
                 setPanel("panel-showcase");
                 feedWrapper.style.display = "none";
                 finalStrip.style.display = "block";
                 finalStrip.src = data.preview;
-                document.getElementById("qr-img").src = `data:image/png;base64,${data.qr}`;
+                qrImage.src = `data:image/png;base64,${data.qr}`;
                 document.getElementById("share-url").textContent = data.url;
                 document.getElementById("qr-timer").textContent = `Menutup dalam ${data.seconds}d`;
+            } else if (data.state === "capture_failed") {
+                resetBoothView();
+                alert(data.sony ? "Foto JPEG dari Sony tidak diterima melalui USB. Sesi dihentikan."
+                                : "Foto tidak dapat diproses. Periksa kamera lalu mulai sesi lagi.");
+            } else if (data.state === "sony_not_ready") {
+                showSonyStatus();
+            } else if (data.state === "busy") {
+                alert("Sesi lain sedang berjalan. Coba lagi setelah sesi selesai.");
             } else if (data.state === "idle") {
-                setPanel("panel-idle");
-                finalStrip.style.display = "none";
-                feedWrapper.style.display = "flex";
-                countdownOverlay.style.display = "none";
+                resetBoothView();
             }
         };
 

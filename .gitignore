@@ -4,3 +4,9 @@ credentials.json
 client_secret_*.json
 token.json*
 jobs/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx

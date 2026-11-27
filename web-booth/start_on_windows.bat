@@ -6,9 +6,12 @@ if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 ) else if exist "venv\Scripts\activate.bat" (
     call "venv\Scripts\activate.bat"
+) else if exist "..\.venv\Scripts\activate.bat" (
+    call "..\.venv\Scripts\activate.bat"
 )
 
-start "Dies Natalis Photobooth Server" cmd /k "uvicorn app:app --host 0.0.0.0 --port 8000"
+if not defined PHOTOBOOTH_SHARE_BASE_URL set "PHOTOBOOTH_SHARE_BASE_URL=https://photos.stellarinium.me"
+start "Dies Natalis Photobooth Server" cmd /k "python -B -m uvicorn app:app --host 127.0.0.1 --port 8000 --no-proxy-headers --no-access-log"
 
 :wait_server
 timeout /t 1 /nobreak >nul
